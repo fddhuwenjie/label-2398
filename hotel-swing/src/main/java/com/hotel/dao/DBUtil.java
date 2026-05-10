@@ -92,4 +92,39 @@ public class DBUtil {
     public static void close(Connection conn, Statement stmt) {
         close(conn, stmt, null);
     }
+
+    /** 获取用于事务的连接（关闭自动提交） */
+    public static Connection getTransactionConnection() throws SQLException {
+        Connection conn = getConnection();
+        conn.setAutoCommit(false);
+        return conn;
+    }
+
+    /** 提交事务 */
+    public static void commit(Connection conn) throws SQLException {
+        if (conn != null && !conn.isClosed()) {
+            conn.commit();
+        }
+    }
+
+    /** 回滚事务 */
+    public static void rollback(Connection conn) throws SQLException {
+        if (conn != null && !conn.isClosed()) {
+            conn.rollback();
+        }
+    }
+
+    /** 关闭事务连接（恢复自动提交并归还连接池） */
+    public static void closeTransactionConnection(Connection conn) {
+        if (conn != null) {
+            try {
+                if (!conn.isClosed()) {
+                    conn.setAutoCommit(true);
+                }
+            } catch (SQLException e) {
+                LogUtil.error("恢复自动提交失败", e);
+            }
+            returnConnection(conn);
+        }
+    }
 }

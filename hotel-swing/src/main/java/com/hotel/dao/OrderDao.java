@@ -137,6 +137,48 @@ public class OrderDao {
         return 0;
     }
 
+    /** 续住：更新订单天数和总价（使用外部连接，用于事务） */
+    public int extendStay(Connection conn, Integer orderId, Integer newDays, java.math.BigDecimal newTotalPrice) throws SQLException {
+        String sql = "UPDATE order_info SET days = ?, total_price = ? WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, newDays);
+            stmt.setBigDecimal(2, newTotalPrice);
+            stmt.setInt(3, orderId);
+            int result = stmt.executeUpdate();
+            LogUtil.info("续住成功: 订单ID=" + orderId + ", 新天数=" + newDays + ", 新总价=" + newTotalPrice);
+            return result;
+        }
+    }
+
+    /** 换房：更新订单的房间ID、天数和总价（使用外部连接，用于事务） */
+    public int changeRoom(Connection conn, Integer orderId, Integer newRoomId, Integer newDays, java.math.BigDecimal newTotalPrice) throws SQLException {
+        String sql = "UPDATE order_info SET room_id = ?, days = ?, total_price = ? WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, newRoomId);
+            stmt.setInt(2, newDays);
+            stmt.setBigDecimal(3, newTotalPrice);
+            stmt.setInt(4, orderId);
+            int result = stmt.executeUpdate();
+            LogUtil.info("换房成功: 订单ID=" + orderId + ", 新房间ID=" + newRoomId + ", 新天数=" + newDays + ", 新总价=" + newTotalPrice);
+            return result;
+        }
+    }
+
+    /** 根据ID查询订单（使用外部连接，用于事务） */
+    public Order findById(Connection conn, Integer id) throws SQLException {
+        String sql = "SELECT o.*, r.room_number, r.room_type FROM order_info o " +
+                     "LEFT JOIN room r ON o.room_id = r.id WHERE o.id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapResultSetToOrder(rs);
+                }
+            }
+        }
+        return null;
+    }
+
     /** 将ResultSet映射为Order对象 */
     private Order mapResultSetToOrder(ResultSet rs) throws SQLException {
         Order order = new Order();

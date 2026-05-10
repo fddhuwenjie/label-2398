@@ -1,10 +1,12 @@
 package com.hotel.service;
 
+import com.hotel.dao.DBUtil;
 import com.hotel.dao.OrderDao;
 import com.hotel.dao.RoomDao;
 import com.hotel.entity.Order;
 import com.hotel.entity.Room;
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.util.Date;
 import java.util.List;
 
@@ -81,5 +83,149 @@ public class OrderService {
     /** 删除订单 */
     public boolean deleteOrder(Integer id) {
         return orderDao.deleteById(id) > 0;
+    }
+
+    /**
+     * 续住操作
+     * 在同一事务中完成订单更新和费用重算
+     * @param orderId 订单ID
+     * @param extraDays 续住天数
+     * @return 更新后的订单信息
+     */
+    public Order extendStay(Integer orderId, Integer extraDays) throws Exception {
+        if (extraDays == null || extraDays <= 0) {
+            throw new Exception("续住天数必须大于0");
+        }
+
+        Connection conn = null;
+        try {
+            conn = DBUtil.getTransactionConnection();
+
+            Order order = orderDao.findById(conn, orderId);
+            if (order == null) {
+                throw new Exception("订单不存在");
+            }
+            if (!"CHECKED_IN".equals(order.getStatus())) {
+                throw new Exception("只有已入住的订单才能续住");
+            }
+
+            Room room = roomDao.findById(conn, order.getRoomId());
+            if (room == null) {
+                throw new Exception("房间不存在");
+            }
+
+            int newDays = order.getDays() + extraDays;
+            BigDecimal newTotalPrice = room.getPrice().multiply(new BigDecimal(newDays));
+
+            int result = orderDao.extendStay(conn, orderId, newDays, newTotalPrice);
+            if (result <= 0) {
+                throw new Exception("续住失败，订单更新失败");
+            }
+
+            DBUtil.commit(conn);
+            return orderDao.findById(orderId);
+
+        } catch (Exception e) {
+            try {
+                DBUtil.rollback(conn);
+            } catch (Exception rollbackEx) {
+                rollbackEx.printStackTrace();
+            }
+            throw e;
+        } finally {
+            DBUtil.closeTransactionConnection(conn);
+        }
+    }
+
+    /**
+     * 换房操作
+     * 在同一事务中完成：
+     * 1. 旧房间状态恢复为空闲
+     * 2. 新房间状态更新为已入住
+     * 3. 订单信息修改（房间ID、剩余天数、总价）
+     * @param orderId 订单ID
+     * @param newRoomId 新房间ID
+     * @param extraDays 换房后额外入住天数（0表示不改变入住时长）
+     * @return 更新后的订单信息
+     */
+    public Order changeRoom(Integer orderId, Integer newRoomId, Integer extraDays) throws Exception {
+        if (newRoomId == null) {
+            throw new Exception("请选择新房间");
+        }
+        if (extraDays == null || extraDays < 0) {
+            throw new Exception("入住天数不能为负数");
+        }
+
+        Connection conn = null;
+        try {
+            conn = DBUtil.getTransactionConnection();
+
+            Order order = orderDao.findById(conn, orderId);
+            if (order == null) {
+                throw new Exception("订单不存在");
+            }
+            if (!"CHECKED_IN".equals(order.getStatus())) {
+                throw new Exception("只有已入住的订单才能换房");
+            }
+
+            Integer oldRoomId = order.getRoomId();
+            if (oldRoomId.equals(newRoomId)) {
+                throw new Exception("新房间与当前房间相同，无需换房");
+            }
+
+            Room oldRoom = roomDao.findById(conn, oldRoomId);
+            if (oldRoom == null) {
+                throw new Exception("原房间不存在");
+            }
+
+            Room newRoom = roomDao.findById(conn, newRoomId);
+            if (newRoom == null) {
+                throw new Exception("新房间不存在");
+            }
+            if (!"AVAILABLE".equals(newRoom.getStatus())) {
+                throw new Exception("新房间不可用，当前状态：" + newRoom.getStatusName());
+            }
+
+            long stayMillis = System.currentTimeMillis() - order.getCheckInTime().getTime();
+            int stayedDays = (int) Math.ceil((double) stayMillis / (1000 * 60 * 60 * 24));
+            if (stayedDays < 1) stayedDays = 1;
+            if (stayedDays > order.getDays()) stayedDays = order.getDays();
+
+            BigDecimal oldRoomPrice = oldRoom.getPrice().multiply(new BigDecimal(stayedDays));
+            int remainingDays = order.getDays() - stayedDays + extraDays;
+            if (remainingDays < 0) remainingDays = 0;
+
+            BigDecimal newRoomPrice = newRoom.getPrice().multiply(new BigDecimal(remainingDays));
+            BigDecimal newTotalPrice = oldRoomPrice.add(newRoomPrice);
+            int newDays = stayedDays + remainingDays;
+
+            int result1 = roomDao.updateStatus(conn, oldRoomId, "AVAILABLE");
+            if (result1 <= 0) {
+                throw new Exception("换房失败：原房间状态更新失败");
+            }
+
+            int result2 = roomDao.updateStatus(conn, newRoomId, "OCCUPIED");
+            if (result2 <= 0) {
+                throw new Exception("换房失败：新房间状态更新失败");
+            }
+
+            int result3 = orderDao.changeRoom(conn, orderId, newRoomId, newDays, newTotalPrice);
+            if (result3 <= 0) {
+                throw new Exception("换房失败：订单信息更新失败");
+            }
+
+            DBUtil.commit(conn);
+            return orderDao.findById(orderId);
+
+        } catch (Exception e) {
+            try {
+                DBUtil.rollback(conn);
+            } catch (Exception rollbackEx) {
+                rollbackEx.printStackTrace();
+            }
+            throw e;
+        } finally {
+            DBUtil.closeTransactionConnection(conn);
+        }
     }
 }
