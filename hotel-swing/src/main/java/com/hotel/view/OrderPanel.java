@@ -33,10 +33,14 @@ public class OrderPanel extends JPanel {
         JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         JButton checkInBtn = new JButton("入住登记");
         JButton checkOutBtn = new JButton("退房结算");
+        JButton extendBtn = new JButton("续住");
+        JButton changeRoomBtn = new JButton("换房");
         JButton refreshBtn = new JButton("刷新");
         
         toolBar.add(checkInBtn);
         toolBar.add(checkOutBtn);
+        toolBar.add(extendBtn);
+        toolBar.add(changeRoomBtn);
         toolBar.add(new JLabel("    状态筛选："));
         statusFilter = new JComboBox<>(new String[]{"全部", "已入住", "已退房"});
         toolBar.add(statusFilter);
@@ -59,6 +63,8 @@ public class OrderPanel extends JPanel {
         // 事件绑定
         checkInBtn.addActionListener(e -> showCheckInDialog());
         checkOutBtn.addActionListener(e -> doCheckOut());
+        extendBtn.addActionListener(e -> showExtendStayDialog());
+        changeRoomBtn.addActionListener(e -> showChangeRoomDialog());
         refreshBtn.addActionListener(e -> loadData());
         statusFilter.addActionListener(e -> loadData());
     }
@@ -265,5 +271,244 @@ public class OrderPanel extends JPanel {
                 JOptionPane.showMessageDialog(this, ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
             }
         }
+    }
+
+    private void showExtendStayDialog() {
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "请先选择一条订单记录");
+            return;
+        }
+
+        String status = (String) tableModel.getValueAt(row, 11);
+        if (!"已入住".equals(status)) {
+            JOptionPane.showMessageDialog(this, "只有已入住的订单才能续住", "提示", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Integer id = (Integer) tableModel.getValueAt(row, 0);
+        String orderNo = (String) tableModel.getValueAt(row, 1);
+        String roomNumber = (String) tableModel.getValueAt(row, 2);
+        int currentDays = (Integer) tableModel.getValueAt(row, 9);
+        java.math.BigDecimal currentPrice = (java.math.BigDecimal) tableModel.getValueAt(row, 10);
+
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "续住申请", true);
+        dialog.setSize(400, 280);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        JSpinner extraDaysSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 365, 1));
+        JLabel newDaysLabel = new JLabel(String.valueOf(currentDays + 1));
+        java.math.BigDecimal pricePerDay = currentPrice.divide(new java.math.BigDecimal(currentDays), 2, java.math.RoundingMode.HALF_UP);
+        JLabel extraPriceLabel = new JLabel("￥" + pricePerDay);
+        JLabel newTotalLabel = new JLabel("￥" + currentPrice.add(pricePerDay));
+
+        extraDaysSpinner.addChangeListener(e -> {
+            int extraDays = (Integer) extraDaysSpinner.getValue();
+            newDaysLabel.setText(String.valueOf(currentDays + extraDays));
+            java.math.BigDecimal extraPrice = pricePerDay.multiply(new java.math.BigDecimal(extraDays));
+            extraPriceLabel.setText("￥" + extraPrice);
+            newTotalLabel.setText("￥" + currentPrice.add(extraPrice));
+        });
+
+        gbc.gridx = 0; gbc.gridy = 0;
+        panel.add(new JLabel("订单号："), gbc);
+        gbc.gridx = 1;
+        panel.add(new JLabel(orderNo), gbc);
+
+        gbc.gridx = 0; gbc.gridy = 1;
+        panel.add(new JLabel("房间号："), gbc);
+        gbc.gridx = 1;
+        panel.add(new JLabel(roomNumber), gbc);
+
+        gbc.gridx = 0; gbc.gridy = 2;
+        panel.add(new JLabel("当前天数："), gbc);
+        gbc.gridx = 1;
+        panel.add(new JLabel(currentDays + " 天"), gbc);
+
+        gbc.gridx = 0; gbc.gridy = 3;
+        panel.add(new JLabel("续住天数："), gbc);
+        gbc.gridx = 1;
+        panel.add(extraDaysSpinner, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 4;
+        panel.add(new JLabel("续住费用："), gbc);
+        gbc.gridx = 1;
+        extraPriceLabel.setFont(new Font("微软雅黑", Font.BOLD, 14));
+        extraPriceLabel.setForeground(Color.RED);
+        panel.add(extraPriceLabel, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 5;
+        panel.add(new JLabel("新总天数："), gbc);
+        gbc.gridx = 1;
+        panel.add(newDaysLabel, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 6;
+        panel.add(new JLabel("新总价："), gbc);
+        gbc.gridx = 1;
+        newTotalLabel.setFont(new Font("微软雅黑", Font.BOLD, 14));
+        newTotalLabel.setForeground(Color.BLUE);
+        panel.add(newTotalLabel, gbc);
+
+        JPanel btnPanel = new JPanel();
+        JButton saveBtn = new JButton("确认续住");
+        JButton cancelBtn = new JButton("取消");
+        btnPanel.add(saveBtn);
+        btnPanel.add(cancelBtn);
+
+        gbc.gridx = 0; gbc.gridy = 7; gbc.gridwidth = 2;
+        panel.add(btnPanel, gbc);
+
+        saveBtn.addActionListener(e -> {
+            int extraDays = (Integer) extraDaysSpinner.getValue();
+            int confirm = JOptionPane.showConfirmDialog(dialog,
+                "确认续住 " + extraDays + " 天？\n续住费用：" + extraPriceLabel.getText() + "\n新总价：" + newTotalLabel.getText(),
+                "续住确认", JOptionPane.YES_NO_OPTION);
+
+            if (confirm == JOptionPane.YES_OPTION) {
+                try {
+                    orderService.extendStay(id, extraDays);
+                    JOptionPane.showMessageDialog(dialog, "续住成功！");
+                    dialog.dispose();
+                    loadData();
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(dialog, ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        cancelBtn.addActionListener(e -> dialog.dispose());
+
+        dialog.add(panel);
+        dialog.setVisible(true);
+    }
+
+    private void showChangeRoomDialog() {
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "请先选择一条订单记录");
+            return;
+        }
+
+        String status = (String) tableModel.getValueAt(row, 11);
+        if (!"已入住".equals(status)) {
+            JOptionPane.showMessageDialog(this, "只有已入住的订单才能换房", "提示", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Integer id = (Integer) tableModel.getValueAt(row, 0);
+        String orderNo = (String) tableModel.getValueAt(row, 1);
+        String currentRoomNumber = (String) tableModel.getValueAt(row, 2);
+
+        List<Room> availableRooms = roomService.findByStatus("AVAILABLE");
+        if (availableRooms.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "当前没有空闲房间", "提示", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "换房申请", true);
+        dialog.setSize(450, 320);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        JComboBox<String> roomBox = new JComboBox<>();
+        for (Room room : availableRooms) {
+            roomBox.addItem(room.getId() + " - " + room.getRoomNumber() + " (" + room.getRoomTypeName() + ") ￥" + room.getPrice() + "/天");
+        }
+
+        JSpinner extraDaysSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 365, 1));
+        JLabel priceDiffLabel = new JLabel("￥0.00");
+
+        roomBox.addActionListener(e -> updatePriceDiff(availableRooms, roomBox, extraDaysSpinner, priceDiffLabel));
+        extraDaysSpinner.addChangeListener(e -> updatePriceDiff(availableRooms, roomBox, extraDaysSpinner, priceDiffLabel));
+
+        gbc.gridx = 0; gbc.gridy = 0;
+        panel.add(new JLabel("订单号："), gbc);
+        gbc.gridx = 1;
+        panel.add(new JLabel(orderNo), gbc);
+
+        gbc.gridx = 0; gbc.gridy = 1;
+        panel.add(new JLabel("当前房间："), gbc);
+        gbc.gridx = 1;
+        panel.add(new JLabel(currentRoomNumber), gbc);
+
+        gbc.gridx = 0; gbc.gridy = 2;
+        panel.add(new JLabel("新房间："), gbc);
+        gbc.gridx = 1;
+        panel.add(roomBox, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 3;
+        panel.add(new JLabel("额外入住天数："), gbc);
+        gbc.gridx = 1;
+        panel.add(extraDaysSpinner, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 4;
+        panel.add(new JLabel("费用差额："), gbc);
+        gbc.gridx = 1;
+        priceDiffLabel.setFont(new Font("微软雅黑", Font.BOLD, 14));
+        priceDiffLabel.setForeground(Color.RED);
+        panel.add(priceDiffLabel, gbc);
+
+        JPanel btnPanel = new JPanel();
+        JButton saveBtn = new JButton("确认换房");
+        JButton cancelBtn = new JButton("取消");
+        btnPanel.add(saveBtn);
+        btnPanel.add(cancelBtn);
+
+        gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 2;
+        panel.add(btnPanel, gbc);
+
+        updatePriceDiff(availableRooms, roomBox, extraDaysSpinner, priceDiffLabel);
+
+        saveBtn.addActionListener(e -> {
+            int roomIdx = roomBox.getSelectedIndex();
+            if (roomIdx < 0) {
+                JOptionPane.showMessageDialog(dialog, "请选择新房间", "提示", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            Room newRoom = availableRooms.get(roomIdx);
+            int extraDays = (Integer) extraDaysSpinner.getValue();
+
+            int confirm = JOptionPane.showConfirmDialog(dialog,
+                "确认换房？\n新房间：" + newRoom.getRoomNumber() + "\n费用差额：" + priceDiffLabel.getText(),
+                "换房确认", JOptionPane.YES_NO_OPTION);
+
+            if (confirm == JOptionPane.YES_OPTION) {
+                try {
+                    orderService.changeRoom(id, newRoom.getId(), extraDays);
+                    JOptionPane.showMessageDialog(dialog, "换房成功！");
+                    dialog.dispose();
+                    loadData();
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(dialog, ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        cancelBtn.addActionListener(e -> dialog.dispose());
+
+        dialog.add(panel);
+        dialog.setVisible(true);
+    }
+
+    private void updatePriceDiff(List<Room> availableRooms, JComboBox<String> roomBox, JSpinner extraDaysSpinner, JLabel priceDiffLabel) {
+        int roomIdx = roomBox.getSelectedIndex();
+        if (roomIdx < 0 || availableRooms == null || availableRooms.isEmpty()) {
+            priceDiffLabel.setText("￥0.00");
+            return;
+        }
+        Room newRoom = availableRooms.get(roomIdx);
+        int extraDays = (Integer) extraDaysSpinner.getValue();
+        java.math.BigDecimal diff = newRoom.getPrice().multiply(new java.math.BigDecimal(extraDays));
+        priceDiffLabel.setText("￥" + diff);
     }
 }
