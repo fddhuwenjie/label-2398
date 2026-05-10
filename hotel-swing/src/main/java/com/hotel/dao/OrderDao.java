@@ -2,6 +2,7 @@ package com.hotel.dao;
 
 import com.hotel.entity.Order;
 import com.hotel.util.LogUtil;
+import java.math.BigDecimal;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -120,6 +121,32 @@ public class OrderDao {
             LogUtil.error("退房失败: 订单ID=" + id, e);
         }
         return 0;
+    }
+
+    /** 续住：更新订单天数和总价（事务内调用） */
+    public int updateForExtend(Connection conn, Integer id, int newDays, BigDecimal newTotalPrice) throws SQLException {
+        String sql = "UPDATE order_info SET days = ?, total_price = ? WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, newDays);
+            stmt.setBigDecimal(2, newTotalPrice);
+            stmt.setInt(3, id);
+            int result = stmt.executeUpdate();
+            LogUtil.info("续住更新订单成功: ID=" + id + ", 新天数=" + newDays + ", 新总价=" + newTotalPrice);
+            return result;
+        }
+    }
+
+    /** 换房：更新订单房间和总价（事务内调用） */
+    public int updateForChangeRoom(Connection conn, Integer id, Integer newRoomId, BigDecimal newTotalPrice) throws SQLException {
+        String sql = "UPDATE order_info SET room_id = ?, total_price = ? WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, newRoomId);
+            stmt.setBigDecimal(2, newTotalPrice);
+            stmt.setInt(3, id);
+            int result = stmt.executeUpdate();
+            LogUtil.info("换房更新订单成功: ID=" + id + ", 新房间ID=" + newRoomId + ", 新总价=" + newTotalPrice);
+            return result;
+        }
     }
 
     /** 删除订单 */
