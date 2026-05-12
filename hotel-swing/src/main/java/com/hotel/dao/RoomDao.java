@@ -132,6 +132,32 @@ public class RoomDao {
         }
         return 0;
     }
+    
+    /** 更新客房状态（事务内使用） */
+    public int updateStatusForTransaction(Connection conn, Integer id, String status) throws SQLException {
+        String sql = "UPDATE room SET status = ? WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, status);
+            stmt.setInt(2, id);
+            int result = stmt.executeUpdate();
+            LogUtil.info("事务内更新客房状态成功: ID=" + id + ", 状态=" + status);
+            return result;
+        }
+    }
+    
+    /** 根据ID查询客房（事务内使用） */
+    public Room findByIdForTransaction(Connection conn, Integer id) throws SQLException {
+        String sql = "SELECT * FROM room WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapResultSetToRoom(rs);
+                }
+            }
+        }
+        return null;
+    }
 
     /** 删除客房 */
     public int deleteById(Integer id) {

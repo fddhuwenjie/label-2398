@@ -53,10 +53,48 @@ public class DBUtil {
             if (conn == null || conn.isClosed()) {
                 conn = createConnection();
             }
+            conn.setAutoCommit(true);
             return conn;
         } catch (SQLException e) {
             LogUtil.error("获取数据库连接失败", e);
             throw e;
+        }
+    }
+    
+    /** 获取用于事务的连接（关闭自动提交） */
+    public static Connection getTransactionConnection() throws SQLException {
+        try {
+            Connection conn = connectionPool.poll();
+            if (conn == null || conn.isClosed()) {
+                conn = createConnection();
+            }
+            conn.setAutoCommit(false);
+            return conn;
+        } catch (SQLException e) {
+            LogUtil.error("获取事务连接失败", e);
+            throw e;
+        }
+    }
+    
+    /** 提交事务 */
+    public static void commit(Connection conn) {
+        try {
+            if (conn != null && !conn.isClosed()) {
+                conn.commit();
+            }
+        } catch (SQLException e) {
+            LogUtil.error("提交事务失败", e);
+        }
+    }
+    
+    /** 回滚事务 */
+    public static void rollback(Connection conn) {
+        try {
+            if (conn != null && !conn.isClosed()) {
+                conn.rollback();
+            }
+        } catch (SQLException e) {
+            LogUtil.error("回滚事务失败", e);
         }
     }
     
