@@ -121,6 +121,48 @@ public class OrderDao {
         }
         return 0;
     }
+    
+    /** 续住更新订单（事务内使用） */
+    public int extendStayForTransaction(Connection conn, Integer orderId, Integer newDays, java.math.BigDecimal newTotalPrice) throws SQLException {
+        String sql = "UPDATE order_info SET days = ?, total_price = ?, update_time = NOW() WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, newDays);
+            stmt.setBigDecimal(2, newTotalPrice);
+            stmt.setInt(3, orderId);
+            int result = stmt.executeUpdate();
+            LogUtil.info("续住更新订单成功: 订单ID=" + orderId + ", 新天数=" + newDays);
+            return result;
+        }
+    }
+    
+    /** 换房更新订单（事务内使用） */
+    public int changeRoomForTransaction(Connection conn, Integer orderId, Integer newRoomId, java.math.BigDecimal newTotalPrice, Integer newDays) throws SQLException {
+        String sql = "UPDATE order_info SET room_id = ?, total_price = ?, days = ?, update_time = NOW() WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, newRoomId);
+            stmt.setBigDecimal(2, newTotalPrice);
+            stmt.setInt(3, newDays);
+            stmt.setInt(4, orderId);
+            int result = stmt.executeUpdate();
+            LogUtil.info("换房更新订单成功: 订单ID=" + orderId + ", 新房间ID=" + newRoomId);
+            return result;
+        }
+    }
+    
+    /** 根据ID查询订单（事务内使用） */
+    public Order findByIdForTransaction(Connection conn, Integer id) throws SQLException {
+        String sql = "SELECT o.*, r.room_number, r.room_type FROM order_info o " +
+                     "LEFT JOIN room r ON o.room_id = r.id WHERE o.id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapResultSetToOrder(rs);
+                }
+            }
+        }
+        return null;
+    }
 
     /** 删除订单 */
     public int deleteById(Integer id) {
